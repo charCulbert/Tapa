@@ -4,7 +4,7 @@ const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const {chromium} = require('playwright');
-const root = path.resolve(__dirname, '../build-native/bd-resources');
+const root = path.resolve(__dirname, '../build-native/tapa-resources');
 (async () => {
   const server = http.createServer(async (request, response) => {
     try {

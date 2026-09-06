@@ -3,9 +3,9 @@
 #include <array>
 #include <cmath>
 
-namespace bd
+namespace tapa
 {
-class Metal
+class ResonatorBank
 {
 public:
     void trigger(double rate, double baseHz, double ratio, double amount,

@@ -1,5 +1,5 @@
 #include "Plugin.h"
-#include "Kick.h"
+#include "DrumVoice.h"
 #include "Presets.h"
 #include <clap/ext/draft/webview.h>
 #include <clap/ext/gui.h>
@@ -14,7 +14,7 @@
 
 namespace
 {
-#define check(passed) do { if (!(passed)) { std::fprintf(stderr, "bd check failed at line %d: %s\n", __LINE__, #passed); std::abort(); } } while (false)
+#define check(passed) do { if (!(passed)) { std::fprintf(stderr, "tapa check failed at line %d: %s\n", __LINE__, #passed); std::abort(); } } while (false)
 std::string visualMessage;
 const clap_host_webview_t webHost { [](const clap_host_t*, const void* data, uint32_t size) -> bool {
     visualMessage.assign(static_cast<const char*>(data), size);
@@ -25,7 +25,7 @@ const void* CLAP_ABI extension(const clap_host_t*, const char* id)
     return std::strcmp(id, CLAP_EXT_WEBVIEW) == 0 ? &webHost : nullptr;
 }
 void CLAP_ABI noop(const clap_host_t*) {}
-const clap_host_t host { CLAP_VERSION, nullptr, "bd tests", "Char", "", "1", extension, noop, noop, noop };
+const clap_host_t host { CLAP_VERSION, nullptr, "tapa tests", "Char", "", "1", extension, noop, noop, noop };
 struct Events
 {
     std::vector<const clap_event_header_t*> items;
@@ -33,13 +33,13 @@ struct Events
         [](const clap_input_events_t* e) -> uint32_t { return static_cast<Events*>(e->ctx)->items.size(); },
         [](const clap_input_events_t* e, uint32_t i) { return static_cast<Events*>(e->ctx)->items.at(i); } };
 };
-std::array<double, bd::parameters.size()> defaults()
+std::array<double, tapa::parameters.size()> defaults()
 {
-    std::array<double, bd::parameters.size()> values {};
-    for (size_t i = 0; i < values.size(); ++i) values[i] = bd::parameters[i].defaultValue;
+    std::array<double, tapa::parameters.size()> values {};
+    for (size_t i = 0; i < values.size(); ++i) values[i] = tapa::parameters[i].defaultValue;
     return values;
 }
-void writeWav(const std::vector<float>& samples, const char* filename = "bd-demo.wav")
+void writeWav(const std::vector<float>& samples, const char* filename = "tapa-demo.wav")
 {
     std::ofstream file(filename, std::ios::binary);
     auto u16 = [&](uint16_t n) { for (int i = 0; i < 2; ++i) file.put(static_cast<char>(n >> (i * 8))); };
@@ -57,30 +57,30 @@ int main()
     // Stress the full range and retriggers at multiple rates, including parameter NaNs.
     for (double rate : { 44100.0, 48000.0, 96000.0 })
     {
-        bd::Kick kick;
-        kick.prepare(rate);
+        tapa::DrumVoice voice;
+        voice.prepare(rate);
         for (int mode = 0; mode < 5; ++mode)
         {
             auto values = defaults();
             for (size_t i = 0; i < values.size(); ++i)
-                if (mode != 0) values[i] = mode == 1 ? bd::parameters[i].minimum
-                                             : mode == 2 || mode == 4 ? bd::parameters[i].maximum : NAN;
+                if (mode != 0) values[i] = mode == 1 ? tapa::parameters[i].minimum
+                                             : mode == 2 || mode == 4 ? tapa::parameters[i].maximum : NAN;
             if (mode == 4) values[7] = 60;
-            kick.trigger(values, 1.0f);
+            voice.trigger(values, 1.0f);
             double energy = 0.0;
             for (int i = 0; i < rate * 16.5; ++i)
             {
-                if (i == 137) kick.trigger(values, 0.8f);
-                const auto sample = kick.next();
+                if (i == 137) voice.trigger(values, 0.8f);
+                const auto sample = voice.next();
                 check(std::isfinite(sample) && std::abs(sample) <= 1.0);
-                const auto visual = kick.visualState();
+                const auto visual = voice.visualState();
                 check(visual[0] >= 0 && visual[0] <= 1 && std::isfinite(visual[1]) && std::isfinite(visual[2]));
                 energy += sample * sample;
                 if (i > rate * 16.4) check(std::abs(sample) < 1.0e-5);
             }
             check(energy > 0.01);
-            kick.reset();
-            check(kick.next() == 0.0);
+            voice.reset();
+            check(voice.next() == 0.0);
         }
     }
 
@@ -90,13 +90,13 @@ int main()
         auto settings = defaults(); settings[0] = 600; settings[6] = 1;
         for (int note : {0, 36, 48, 60, 72, 84, 127})
         {
-            bd::Kick kick; kick.prepare(rate); kick.trigger(settings, 1.0f, note);
+            tapa::DrumVoice voice; voice.prepare(rate); voice.trigger(settings, 1.0f, note);
             const auto expected = 600 * std::clamp(std::exp2((60.0-note)/24), .5, 2.0);
-            check(std::abs(kick.bodyDecayMs() - expected) < 1e-9);
-            for (int i = 0; i < rate * expected * .001; ++i) (void) kick.next();
-            check(std::abs(kick.visualState()[0] - .001) < .00002);
+            check(std::abs(voice.bodyDecayMs() - expected) < 1e-9);
+            for (int i = 0; i < rate * expected * .001; ++i) (void) voice.next();
+            check(std::abs(voice.visualState()[0] - .001) < .00002);
         }
-        bd::Kick silent; silent.prepare(rate);
+        tapa::DrumVoice silent; silent.prepare(rate);
         settings[2] = settings[4] = settings[7] = 100; settings[3] = 12;
         silent.trigger(settings, 0.0f, 36);
         for (int i = 0; i < 4096; ++i) check(silent.next() == 0);
@@ -107,14 +107,14 @@ int main()
         std::array<double, 2> falls {};
         for (int mode = 0; mode < 2; ++mode)
         {
-            bd::Kick kick; kick.prepare(48000);
+            tapa::DrumVoice voice; voice.prepare(48000);
             auto settings = defaults();
             settings[0] = 600; settings[1] = settings[2] = 0; settings[3] = mode * 12;
-            kick.trigger(settings, 1.0f, 60);
+            voice.trigger(settings, 1.0f, 60);
             double early = 0, late = 0;
             for (int i = 0; i < 15360; ++i)
             {
-                const auto sample = kick.next();
+                const auto sample = voice.next();
                 if (i >= 4800 && i < 5760) early += sample * sample;
                 if (i >= 14400) late += sample * sample;
             }
@@ -126,7 +126,7 @@ int main()
     // Excited metal rings after its input stops, resets exactly, and remains bounded.
     for (double rate : {44100.0, 48000.0, 96000.0})
     {
-        bd::Metal metal;
+        tapa::ResonatorBank metal;
         metal.trigger(rate * 4, 420, 2.6, .7, 600, 1, 1);
         double ringingEnergy = 0;
         for (int i = 0; i < rate * 4 * .1; ++i)
@@ -140,28 +140,28 @@ int main()
         check(metal.next(0) == 0);
         for (int note : {0, 60, 127})
         {
-            bd::Kick kick, fresh; kick.prepare(rate); fresh.prepare(rate);
+            tapa::DrumVoice voice, fresh; voice.prepare(rate); fresh.prepare(rate);
             auto settings = defaults();
             settings[0] = 150; settings[1] = settings[2] = settings[4] = 100;
             settings[3] = 12; settings[5] = 16; settings[7] = 60;
-            kick.trigger(settings, 1, note);
+            voice.trigger(settings, 1, note);
             double energy = 0;
             for (int i = 0; i < rate; ++i)
             {
-                const auto sample = kick.next();
+                const auto sample = voice.next();
                 check(std::isfinite(sample) && std::abs(sample) <= .5);
                 energy += sample * sample;
                 if (i > rate * .95) check(std::abs(sample) < 1e-5);
             }
             check(energy > .001);
-            kick.reset(); kick.trigger(settings,1,note); fresh.trigger(settings,1,note);
-            for (int i = 0; i < 2048; ++i) check(kick.next() == fresh.next());
+            voice.reset(); voice.trigger(settings,1,note); fresh.trigger(settings,1,note);
+            for (int i = 0; i < 2048; ++i) check(voice.next() == fresh.next());
         }
     }
 
     // Feedback must change the sound and reset deterministically on retrigger.
     {
-        bd::Kick clean, driven, fresh;
+        tapa::DrumVoice clean, driven, fresh;
         clean.prepare(48000); driven.prepare(48000); fresh.prepare(48000);
         auto settings = defaults();
         clean.trigger(settings, 1.0f);
@@ -178,7 +178,7 @@ int main()
     // Ratio changes timbre only when a modulator is audible.
     for (double amount : {0.0, 65.0})
     {
-        bd::Kick low, high;
+        tapa::DrumVoice low, high;
         low.prepare(48000); high.prepare(48000);
         auto settings = defaults(); settings[1] = amount; settings[2] = 0;
         settings[5] = 1; low.trigger(settings, 1.0f);
@@ -189,7 +189,7 @@ int main()
     }
     // The transient macro changes waveform character, rather than just gain.
     {
-        bd::Kick tick, metal, dry;
+        tapa::DrumVoice tick, metal, dry;
         tick.prepare(48000); metal.prepare(48000); dry.prepare(48000);
         auto settings = defaults(); settings[1] = 0;
         settings[2] = 0; dry.trigger(settings, 1.0f);
@@ -210,13 +210,13 @@ int main()
         double modulation[2] {};
         for (int linked = 0; linked < 2; ++linked)
         {
-            bd::Kick kick; kick.prepare(48000);
+            tapa::DrumVoice voice; voice.prepare(48000);
             auto settings = defaults(); settings[0] = 2000; settings[6] = linked;
-            kick.trigger(settings, 1.0f);
+            voice.trigger(settings, 1.0f);
             for (int i = 0; i < 24000; ++i)
             {
-                (void) kick.next();
-                if (i >= 19200) modulation[linked] += std::abs(kick.visualState()[1]);
+                (void) voice.next();
+                if (i >= 19200) modulation[linked] += std::abs(voice.visualState()[1]);
             }
         }
         check(modulation[0] < 1e-8 && modulation[1] > 100);
@@ -224,7 +224,7 @@ int main()
 
     // Noise can sustain after the attack, and follows the selected decay.
     {
-        bd::Kick tonal, noisy;
+        tapa::DrumVoice tonal, noisy;
         tonal.prepare(48000); noisy.prepare(48000);
         auto settings = defaults(); settings[0] = 2000; settings[1] = settings[2] = 0;
         tonal.trigger(settings, 1.0f);
@@ -244,14 +244,14 @@ int main()
         }
         check(tailEnergy > .01 && noiseCrossings > tonalCrossings * 3);
         noisy.reset();
-        bd::Kick fresh; fresh.prepare(48000);
+        tapa::DrumVoice fresh; fresh.prepare(48000);
         noisy.trigger(settings, 1.0f); fresh.trigger(settings, 1.0f);
         for (int i = 0; i < 1024; ++i) check(noisy.next() == fresh.next());
     }
 
     // FM must not introduce a pitched oscillator into the sustained noise.
     {
-        bd::Kick plain, modulated;
+        tapa::DrumVoice plain, modulated;
         plain.prepare(48000); modulated.prepare(48000);
         auto settings = defaults();
         settings[0] = 2000; settings[1] = settings[2] = 0; settings[7] = 100;
@@ -267,13 +267,13 @@ int main()
     std::array<int, 2> crossings {};
     for (int octave = 0; octave < 2; ++octave)
     {
-        bd::Kick kick;
-        kick.prepare(48000);
-        kick.trigger(values, 1.0f, 36 + 12 * octave);
+        tapa::DrumVoice voice;
+        voice.prepare(48000);
+        voice.trigger(values, 1.0f, 36 + 12 * octave);
         double previous = 0;
         for (int frame = 0; frame < 24000; ++frame)
         {
-            const auto sample = kick.next();
+            const auto sample = voice.next();
             if (frame > 4800 && previous <= 0 && sample > 0) ++crossings[octave];
             previous = sample;
         }
@@ -281,9 +281,9 @@ int main()
     check(std::abs(crossings[1] - 2 * crossings[0]) <= 1);
     check(std::abs(crossings[0] - 26) <= 1); // MIDI 36 = 65.406 Hz over 0.4 seconds.
 
-    const auto* factory = static_cast<const clap_plugin_factory_t*>(bd::entryGetFactory(CLAP_PLUGIN_FACTORY_ID));
+    const auto* factory = static_cast<const clap_plugin_factory_t*>(tapa::entryGetFactory(CLAP_PLUGIN_FACTORY_ID));
     check(factory && factory->get_plugin_count(factory) == 1);
-    const auto* plugin = factory->create_plugin(factory, &host, bd::descriptor().id);
+    const auto* plugin = factory->create_plugin(factory, &host, tapa::descriptor().id);
     check(plugin && plugin->init(plugin));
     const auto* gui = static_cast<const clap_plugin_gui_t*>(plugin->get_extension(plugin, CLAP_EXT_GUI));
     check(gui && gui->create(plugin, CLAP_WINDOW_API_WEBVIEW, false));
@@ -299,13 +299,13 @@ int main()
     const auto* params = static_cast<const clap_plugin_params_t*>(plugin->get_extension(plugin, CLAP_EXT_PARAMS));
     const auto* state = static_cast<const clap_plugin_state_t*>(plugin->get_extension(plugin, CLAP_EXT_STATE));
     const auto* presets = static_cast<const clap_plugin_preset_load_t*>(plugin->get_extension(plugin, CLAP_EXT_PRESET_LOAD));
-    check(params && state && presets && params->count(plugin) == bd::parameters.size());
-    for (uint32_t i = 0; i < bd::parameters.size(); ++i)
+    check(params && state && presets && params->count(plugin) == tapa::parameters.size());
+    for (uint32_t i = 0; i < tapa::parameters.size(); ++i)
     {
         clap_param_info_t info {};
         double value = 0;
-        check(params->get_info(plugin, i, &info) && info.id == bd::parameters[i].id);
-        check(params->get_value(plugin, bd::parameters[i].id, &value) && value == bd::parameters[i].defaultValue);
+        check(params->get_info(plugin, i, &info) && info.id == tapa::parameters[i].id);
+        check(params->get_value(plugin, tapa::parameters[i].id, &value) && value == tapa::parameters[i].defaultValue);
     }
     std::vector<char> saved;
     clap_ostream_t out { &saved, [](const clap_ostream_t* s, const void* data, uint64_t n) -> int64_t {
@@ -438,27 +438,27 @@ int main()
         }
     }
     check(maxVisualEnergy > 0.05f && lastVisualEnergy < 0.005f && maxVisualHit >= 12);
-    std::ofstream("bd-visual.txt") << activeVisual;
+    std::ofstream("tapa-visual.txt") << activeVisual;
     writeWav(demo);
     std::vector<float> presetDemo;
-    for (const auto& preset : bd::presets)
+    for (const auto& preset : tapa::presets)
     {
-        check(std::count_if(bd::presets.begin(), bd::presets.end(), [&](const auto& other) {
+        check(std::count_if(tapa::presets.begin(), tapa::presets.end(), [&](const auto& other) {
             return std::strcmp(other.key,preset.key)==0 || std::strcmp(other.name,preset.name)==0;
         }) == 1);
         for (size_t i = 0; i < preset.values.size(); ++i)
-            check(std::isfinite(preset.values[i]) && preset.values[i] >= bd::parameters[i].minimum
-                                                && preset.values[i] <= bd::parameters[i].maximum);
+            check(std::isfinite(preset.values[i]) && preset.values[i] >= tapa::parameters[i].minimum
+                                                && preset.values[i] <= tapa::parameters[i].maximum);
         if (preset.suggestedNote < 0) continue;
         check(presets->from_location(plugin, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr, preset.key));
         for (size_t i = 0; i < preset.values.size(); ++i)
         {
             double value = 0;
-            check(params->get_value(plugin, bd::parameters[i].id, &value));
+            check(params->get_value(plugin, tapa::parameters[i].id, &value));
             check(std::abs(value - preset.values[i]) < 1e-8);
         }
         plugin->reset(plugin);
-        bd::Kick reference; reference.prepare(48000);
+        tapa::DrumVoice reference; reference.prepare(48000);
         reference.trigger(preset.values, 1.0f, preset.suggestedNote);
         note.header.time = 0; note.velocity = 1; note.key = preset.suggestedNote;
         events.items = { &note.header };
@@ -484,10 +484,10 @@ int main()
     const std::array keys {"closed-hat", "open-hat", "crash", "ride"};
     for (size_t i = 0; i < keys.size(); ++i)
     {
-        const auto preset = std::find_if(bd::presets.begin(), bd::presets.end(),
+        const auto preset = std::find_if(tapa::presets.begin(), tapa::presets.end(),
             [&](const auto& p) { return std::strcmp(p.key, keys[i]) == 0; });
-        check(preset != bd::presets.end());
-        bd::Kick voice; voice.prepare(48000); voice.trigger(preset->values,1,preset->suggestedNote);
+        check(preset != tapa::presets.end());
+        tapa::DrumVoice voice; voice.prepare(48000); voice.trigger(preset->values,1,preset->suggestedNote);
         std::vector<double> cumulative(96000);
         double energy = 0;
         for (auto& value : cumulative)
@@ -501,10 +501,10 @@ int main()
     check(halfTimes[2] > halfTimes[3]);
     // Snare needs an audible noisy body after the initial tick.
     {
-        const auto preset = std::find_if(bd::presets.begin(),bd::presets.end(),
+        const auto preset = std::find_if(tapa::presets.begin(),tapa::presets.end(),
             [](const auto& p) { return std::strcmp(p.key,"snare")==0; });
-        check(preset != bd::presets.end());
-        bd::Kick voice; voice.prepare(48000); voice.trigger(preset->values,1,preset->suggestedNote);
+        check(preset != tapa::presets.end());
+        tapa::DrumVoice voice; voice.prepare(48000); voice.trigger(preset->values,1,preset->suggestedNote);
         double total = 0, buzz = 0;
         int crossings = 0;
         double previous = 0;
@@ -521,5 +521,5 @@ int main()
         check(buzz > total * .1 && crossings > 100);
     }
     plugin->stop_processing(plugin); plugin->deactivate(plugin); plugin->destroy(plugin);
-    std::puts("bd: DSP bounds/tails, MIDI pitch, CLAP timing, stereo/64-bit, state and presets passed");
+    std::puts("tapa: DSP bounds/tails, MIDI pitch, CLAP timing, stereo/64-bit, state and presets passed");
 }

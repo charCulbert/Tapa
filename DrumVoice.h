@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Parameters.h"
-#include "Metal.h"
+#include "ResonatorBank.h"
 #include "chardsp/chardsp_OscillatorPhase.h"
 #include "chardsp/chardsp_SimpleDownsampler.h"
 #include "chardsp/chardsp_DCBlocker.h"
@@ -10,10 +10,10 @@
 #include <cmath>
 #include <cstdint>
 
-namespace bd
+namespace tapa
 {
 
-class Kick
+class DrumVoice
 {
 public:
     void prepare(double sampleRate) noexcept
@@ -152,7 +152,7 @@ private:
     std::array<chardsp::OscillatorPhase<double>, 3> phases;
     chardsp::SimpleDownsampler<double, 4> downsampler;
     chardsp::DCBlocker<double> dc;
-    Metal metal;
+    ResonatorBank metal;
     std::array<double, parameters.size()> p {};
     std::array<float, 3> visual {};
     double rate = 192000.0, age = 0.0, strength = 0.0, tuning = 1.0, decayMs = 280.0;
@@ -165,4 +165,4 @@ private:
     bool active = false;
 };
 
-} // namespace bd
+} // namespace tapa

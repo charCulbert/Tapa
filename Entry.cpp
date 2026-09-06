@@ -4,8 +4,8 @@ extern "C"
 {
 const CLAP_EXPORT clap_plugin_entry_t clap_entry {
     CLAP_VERSION,
-    bd::entryInit,
-    bd::entryDeinit,
-    bd::entryGetFactory
+    tapa::entryInit,
+    tapa::entryDeinit,
+    tapa::entryGetFactory
 };
 }

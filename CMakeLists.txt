@@ -59,24 +59,24 @@ if(NOT TARGET chardsp)
 endif()
 
 set(PLUGIN_OUTPUT_NAME "tapa")
-set(PLUGIN_ID "com.charlieculbert.bd")
+set(PLUGIN_ID "com.charlieculbert.tapa")
 
 include("${CHAR_CLAP_UTILS_ROOT}/cmake/CharClapWebUI.cmake")
-char_clap_stage_web_ui(bd
+char_clap_stage_web_ui(tapa
     SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/ui"
     COMPOST_ROOT "${COMPOST_ROOT}"
     COMPONENTS slider)
 
-add_library(bd-impl STATIC Plugin.cpp)
-target_include_directories(bd-impl PUBLIC
+add_library(tapa-impl STATIC Plugin.cpp)
+target_include_directories(tapa-impl PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}" "${CHAR_CLAP_UTILS_ROOT}/include")
-target_link_libraries(bd-impl PUBLIC
+target_link_libraries(tapa-impl PUBLIC
     clap
     clap-helpers
     clap-wrapper-extensions
     chardsp::chardsp)
-char_clap_add_native_webview(bd-impl "${CLAP_WRAPPER_CHOC_ROOT}")
-add_dependencies(bd-impl bd-resources)
+char_clap_add_native_webview(tapa-impl "${CLAP_WRAPPER_CHOC_ROOT}")
+add_dependencies(tapa-impl tapa-resources)
 
 if(ANY_WASM_TOOLCHAIN)
     set(formats WCLAP)
@@ -93,11 +93,11 @@ if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT ANY_WASM_TOOLCHAIN)
 endif()
 
 make_clapfirst_plugins(
-    TARGET_NAME bd
-    IMPL_TARGET bd-impl
+    TARGET_NAME tapa
+    IMPL_TARGET tapa-impl
     OUTPUT_NAME "${PLUGIN_OUTPUT_NAME}"
     ENTRY_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/Entry.cpp"
-    RESOURCE_DIRECTORY "${bd_RESOURCE_DIRECTORY}"
+    RESOURCE_DIRECTORY "${tapa_RESOURCE_DIRECTORY}"
     BUNDLE_IDENTIFIER "${PLUGIN_ID}"
     BUNDLE_VERSION "${PROJECT_VERSION}"
     PLUGIN_FORMATS ${formats}
@@ -107,55 +107,55 @@ make_clapfirst_plugins(
     AUV3_BUILD_STANDALONE TRUE
     AUV2_MANUFACTURER_NAME "Charlie Culbert"
     AUV2_MANUFACTURER_CODE "ChAr"
-    AUV2_SUBTYPE_CODE "ChBD"
+    AUV2_SUBTYPE_CODE "Tapa"
     AUV2_INSTRUMENT_TYPE "aumu"
     ASSET_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/artifacts"
     COPY_AFTER_BUILD FALSE)
 
 # The wrapper copies resources after linking; UI-only edits must trigger that step.
-foreach(bundle IN ITEMS bd_clap bd_standalone bd_auv3)
+foreach(bundle IN ITEMS tapa_clap tapa_standalone tapa_auv3)
     if(TARGET ${bundle})
         set_property(TARGET ${bundle} APPEND PROPERTY LINK_DEPENDS
-            "${CMAKE_CURRENT_BINARY_DIR}/bd-resources.stamp")
+            "${CMAKE_CURRENT_BINARY_DIR}/tapa-resources.stamp")
     endif()
 endforeach()
 
 if(ANY_WASM_TOOLCHAIN)
-    add_custom_target(bd-stage-wclap-resources ALL
+    add_custom_target(tapa-stage-wclap-resources ALL
         COMMAND ${CMAKE_COMMAND} -E rm -rf
             "${CMAKE_CURRENT_BINARY_DIR}/artifacts/${PLUGIN_OUTPUT_NAME}.wclap/ui"
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${bd_RESOURCE_DIRECTORY}"
+            "${tapa_RESOURCE_DIRECTORY}"
             "${CMAKE_CURRENT_BINARY_DIR}/artifacts/${PLUGIN_OUTPUT_NAME}.wclap"
         COMMAND ${CMAKE_COMMAND} -E tar cfz
             "${CMAKE_CURRENT_BINARY_DIR}/artifacts/${PLUGIN_OUTPUT_NAME}.wclap.tar.gz"
             --format=gnutar module.wasm ui
-        DEPENDS bd_wclap
+        DEPENDS tapa_wclap
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/artifacts/${PLUGIN_OUTPUT_NAME}.wclap"
         VERBATIM)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    add_executable(bd_ios_host Entry.cpp)
-    target_link_libraries(bd_ios_host PRIVATE bd-impl)
+    add_executable(tapa_ios_host Entry.cpp)
+    target_link_libraries(tapa_ios_host PRIVATE tapa-impl)
     target_add_auv3_standalone_ios_wrapper(
-        TARGET bd_ios_host
+        TARGET tapa_ios_host
         OUTPUT_NAME "${PLUGIN_OUTPUT_NAME}"
         BUNDLE_IDENTIFIER "${PLUGIN_ID}"
         BUNDLE_VERSION "${PROJECT_VERSION}"
-        AUV3_TARGET bd_auv3
-        RESOURCE_DIRECTORY "${bd_RESOURCE_DIRECTORY}"
+        AUV3_TARGET tapa_auv3
+        RESOURCE_DIRECTORY "${tapa_RESOURCE_DIRECTORY}"
         AU_TYPE "aumu"
-        AU_SUBTYPE "ChBD"
+        AU_SUBTYPE "Tapa"
         AU_MANUFACTURER "ChAr")
-    set_target_properties(bd_ios_host PROPERTIES
+    set_target_properties(tapa_ios_host PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/artifacts")
-    add_dependencies(bd_all bd_ios_host)
+    add_dependencies(tapa_all tapa_ios_host)
 endif()
 
 include(CTest)
 if(BUILD_TESTING AND NOT ANY_WASM_TOOLCHAIN AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    add_executable(bd-tests tests/BDTests.cpp)
-    target_link_libraries(bd-tests PRIVATE bd-impl)
-    add_test(NAME bd-tests COMMAND bd-tests)
+    add_executable(tapa-tests tests/TapaTests.cpp)
+    target_link_libraries(tapa-tests PRIVATE tapa-impl)
+    add_test(NAME tapa-tests COMMAND tapa-tests)
 endif()

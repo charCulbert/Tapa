@@ -1,6 +1,6 @@
 #pragma once
 #include <array>
-namespace bd
+namespace tapa
 {
 struct ParameterInfo { unsigned id; const char* name; double minimum, maximum, defaultValue; const char* unit; };
 inline constexpr std::array parameters {

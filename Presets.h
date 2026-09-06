@@ -1,7 +1,7 @@
 #pragma once
 #include "Parameters.h"
 
-namespace bd
+namespace tapa
 {
 struct Preset
 {

@@ -8,7 +8,7 @@
 #include "char_clap_utils/ParameterState.h"
 #include "char_clap_utils/Process.h"
 
-#include "Kick.h"
+#include "DrumVoice.h"
 #include "Parameters.h"
 
 #include <clap/helpers/param-queue.hh>
@@ -29,12 +29,12 @@
 #include <string>
 #include <string_view>
 
-namespace bd
+namespace tapa
 {
 namespace
 {
 
-constexpr char pluginId[] = "com.charlieculbert.bd";
+constexpr char pluginId[] = "com.charlieculbert.tapa";
 
 enum class EditType : uint8_t { begin, value, end };
 struct Edit { EditType type; clap_id id; double value; };
@@ -68,7 +68,7 @@ protected:
 
     bool activate(double sampleRate, uint32_t, uint32_t) noexcept override
     {
-        kick.prepare(sampleRate);
+        voice.prepare(sampleRate);
         visualInterval = std::max(1u, static_cast<uint32_t>(sampleRate / 30.0));
         visualFrame = {};
         visualFrames = 0;
@@ -76,7 +76,7 @@ protected:
         return true;
     }
 
-    void reset() noexcept override { kick.reset(); }
+    void reset() noexcept override { voice.reset(); }
     bool startProcessing() noexcept override { return true; }
 
     clap_process_status process(const clap_process_t* process) noexcept override
@@ -527,9 +527,9 @@ private:
                 (void) states[i].consumePublishedBase();
                 values[i] = states[i].nextValue();
             }
-            kick.trigger(values, velocity, note);
+            voice.trigger(values, velocity, note);
             ++visualFrame.hit;
-            visualFrame.decayMs = static_cast<float>(kick.bodyDecayMs());
+            visualFrame.decayMs = static_cast<float>(voice.bodyDecayMs());
             visualFrame.punch = static_cast<float>(values[1] * 0.01);
             visualFrame.click = static_cast<float>(values[2] * 0.01);
             visualFrame.drive = static_cast<float>(values[3] / 12.0);
@@ -547,7 +547,7 @@ private:
 
         for (uint32_t frame = begin; frame < end; ++frame)
         {
-            const auto sample = static_cast<Sample>(kick.next());
+            const auto sample = static_cast<Sample>(voice.next());
             left[frame] = sample;
             right[frame] = sample;
             captureVisual(static_cast<float>(sample));
@@ -572,7 +572,7 @@ private:
 
     void captureVisual(float sample) noexcept
     {
-        visualFrame.operators[visualFrames * 24 / visualInterval] = kick.visualState();
+        visualFrame.operators[visualFrames * 24 / visualInterval] = voice.visualState();
         visualFrame.energy += sample * sample;
         visualFrame.peak = std::max(visualFrame.peak, std::abs(sample));
         visualFrame.edge += std::abs(sample - visualPrevious);
@@ -596,7 +596,7 @@ private:
     const clap_host_state_t* hostState = nullptr;
     const clap_host_preset_load_t* hostPresetLoad = nullptr;
     char_clap::WebUI ui;
-    Kick kick;
+    DrumVoice voice;
     std::array<char_clap::ParameterState, parameters.size()> states {{
         { 20.0, 4000.0, 280.0 },
         { 0.0, 100.0, 50.0 }, { 0.0, 100.0, 30.0 }, { 0.0, 12.0, 2.0 }, { 0.0, 100.0, 0.0 }, { 0.25, 16.0, 2.6025 }, { 0.0, 1.0, 0.0 }, { 0.0, 100.0, 0.0 }
@@ -628,7 +628,7 @@ struct PresetProvider
     static const clap_preset_discovery_provider_descriptor_t& providerDescriptor()
     {
         static const clap_preset_discovery_provider_descriptor_t value {
-            CLAP_VERSION, "com.charlieculbert.bd.presets",
+            CLAP_VERSION, "com.charlieculbert.tapa.presets",
             "tapa Presets", "Charlie Culbert"
         };
         return value;
@@ -725,4 +725,4 @@ const void* entryGetFactory(const char* factoryId)
     return nullptr;
 }
 
-} // namespace bd
+} // namespace tapa
