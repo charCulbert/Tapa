@@ -24,15 +24,15 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "^wasm")
     set(ANY_WASM_TOOLCHAIN TRUE)
 endif()
 
-# Reuse local checkouts; override these cache paths for another workspace.
+# Dependencies are pinned submodules; cache paths can override them locally.
 set(external "${CMAKE_CURRENT_SOURCE_DIR}/external")
 set(CLAP_SDK_ROOT "${external}/clap" CACHE PATH "CLAP SDK")
 set(CLAP_HELPERS_ROOT "${external}/clap-helpers" CACHE PATH "clap-helpers")
 set(CLAP_WRAPPER_ROOT "${external}/clap-wrapper" CACHE PATH "clap-wrapper (charCulbert fork)")
 set(CLAP_WRAPPER_CHOC_ROOT "${external}/choc" CACHE PATH "CHOC")
-set(CHAR_CLAP_UTILS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../char-clap-utils" CACHE PATH "char-clap-utils")
-set(CHARDSP_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../chardsp" CACHE PATH "chardsp")
-set(COMPOST_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../compost" CACHE PATH "compost web components")
+set(CHAR_CLAP_UTILS_ROOT "${external}/char-clap-utils" CACHE PATH "char-clap-utils")
+set(CHARDSP_ROOT "${external}/chardsp" CACHE PATH "chardsp")
+set(COMPOST_ROOT "${external}/compost" CACHE PATH "compost web components")
 foreach(root IN ITEMS CLAP_SDK_ROOT CLAP_HELPERS_ROOT CLAP_WRAPPER_ROOT CLAP_WRAPPER_CHOC_ROOT
                       CHAR_CLAP_UTILS_ROOT CHARDSP_ROOT COMPOST_ROOT)
     if(NOT EXISTS "${${root}}/CMakeLists.txt" AND NOT EXISTS "${${root}}/package.json"
@@ -76,7 +76,17 @@ target_link_libraries(tapa-impl PUBLIC
     clap-wrapper-extensions
     chardsp::chardsp)
 char_clap_add_native_webview(tapa-impl "${CLAP_WRAPPER_CHOC_ROOT}")
-add_dependencies(tapa-impl tapa-resources)
+add_custom_target(tapa-licenses
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE" "${tapa_RESOURCE_DIRECTORY}/LICENSE"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY_NOTICES.md" "${tapa_RESOURCE_DIRECTORY}/THIRD_PARTY_NOTICES.md"
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "${tapa_RESOURCE_DIRECTORY}/THIRD_PARTY_LICENSES"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY_LICENSES" "${tapa_RESOURCE_DIRECTORY}/THIRD_PARTY_LICENSES"
+    DEPENDS tapa-resources
+    VERBATIM)
+add_dependencies(tapa-impl tapa-licenses)
 
 if(ANY_WASM_TOOLCHAIN)
     set(formats WCLAP)
@@ -120,20 +130,7 @@ foreach(bundle IN ITEMS tapa_clap tapa_standalone tapa_auv3)
     endif()
 endforeach()
 
-if(ANY_WASM_TOOLCHAIN)
-    add_custom_target(tapa-stage-wclap-resources ALL
-        COMMAND ${CMAKE_COMMAND} -E rm -rf
-            "${CMAKE_CURRENT_BINARY_DIR}/artifacts/${PLUGIN_OUTPUT_NAME}.wclap/ui"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${tapa_RESOURCE_DIRECTORY}"
-            "${CMAKE_CURRENT_BINARY_DIR}/artifacts/${PLUGIN_OUTPUT_NAME}.wclap"
-        COMMAND ${CMAKE_COMMAND} -E tar cfz
-            "${CMAKE_CURRENT_BINARY_DIR}/artifacts/${PLUGIN_OUTPUT_NAME}.wclap.tar.gz"
-            --format=gnutar module.wasm ui
-        DEPENDS tapa_wclap
-        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/artifacts/${PLUGIN_OUTPUT_NAME}.wclap"
-        VERBATIM)
-endif()
+
 
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     add_executable(tapa_ios_host Entry.cpp)
