@@ -1,9 +1,9 @@
-# TAPA
+# Tapa
 
 A monophonic drum synth: FM, noise and metallic resonances. Seven controls,
 20 presets. Standalone, CLAP, AUv3 and WCLAP.
 
-![TAPA](screenshot.png)
+![Tapa](screenshot.png)
 
 | Control | Effect |
 |---|---|

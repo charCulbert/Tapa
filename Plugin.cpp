@@ -627,7 +627,7 @@ struct PresetProvider
     {
         static const clap_preset_discovery_provider_descriptor_t value {
             CLAP_VERSION, "com.charlieculbert.tapa.presets",
-            "TAPA Presets", "Charlie Culbert"
+            "Tapa Presets", "Charlie Culbert"
         };
         return value;
     }
@@ -693,7 +693,7 @@ const clap_plugin_descriptor_t& descriptor() noexcept
         CLAP_PLUGIN_FEATURE_STEREO, nullptr
     };
     static const clap_plugin_descriptor_t value {
-        CLAP_VERSION, pluginId, "TAPA", "Charlie Culbert",
+        CLAP_VERSION, pluginId, "Tapa", "Charlie Culbert",
         "", "", "", "0.1.0", "FM drum with transient and sustained noise", features
     };
     return value;

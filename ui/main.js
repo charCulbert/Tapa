@@ -182,7 +182,7 @@ function animateTexture(now) {
         const gx = Math.floor(x / width * 25) - 1;
         if (gx < 0 || gx >= 23 || gx % 6 === 5) continue;
         if (glyphs[Math.floor(gx / 6)][gy][gx % 6] === '1')
-          context.fillText('TAPA'[(row + column) % 4], x, y);
+          context.fillText('Tapa'[(row + column) % 4], x, y);
       }
     }
     cleanTexture.width = width; cleanTexture.height = height;
