@@ -60,8 +60,13 @@ public:
         feedback = p[4] * 0.006;
         feedbackSample = noiseLow = noiseBandHigh = noiseBandLow = 0.0;
         const auto metalPitch = std::clamp(std::exp2(-keyOffset / 48.0), .5, 2.0);
-        const auto noiseCutoff = (1.0 - metalMix) * std::clamp(tuning * p[5] * 8.0, 180.0, 14000.0)
+        auto clusterBlend = std::clamp((noiseAmount - .9) * 10.0, 0.0, 1.0);
+        clusterBlend *= clusterBlend * (3.0 - 2.0 * clusterBlend);
+        clusterAmount = clusterBlend * 4.0 * clickAmount * (1.0 - clickAmount);
+        auto noiseCutoff = (1.0 - metalMix) * std::clamp(tuning * p[5] * 8.0, 180.0, 14000.0)
                                + metalMix * std::clamp(6500 * std::pow(p[5] / 2.6, .15) * metalPitch, 3500.0, 14000.0);
+        const auto clapCutoff = std::clamp(1800.0 * std::pow(p[5], .3) * metalPitch, 900.0, 4500.0);
+        noiseCutoff += clusterAmount * (clapCutoff - noiseCutoff);
         noiseHighSmoothing = 1.0 - std::exp(-tau * noiseCutoff / rate);
         noiseLowSmoothing = 1.0 - std::exp(-tau * noiseCutoff * .2 / rate);
         noiseSeed = 0x74617061;
@@ -98,7 +103,7 @@ public:
             morph = morph * morph * (3.0 - 2.0 * morph);
             const auto metallic = std::sin(tau * phases[2].getPhase()
                                          + noiseLow * morph * 12.0 + slap * morph);
-            const auto click = std::min(1.0, clickAmount * 3.0)
+            const auto click = (1.0 - clusterAmount) * std::min(1.0, clickAmount * 3.0)
                              * envelope(age, 0.1, 2.0 + 38.0 * clickAmount * clickAmount)
                              * ((1.0 - morph) * noiseLow + morph * ((1.0 - metalMix) * metallic + metalMix * noise));
             const auto bodyLevel = envelope(age, 0.25, decayMs) * strength;
@@ -106,8 +111,19 @@ public:
             noiseBandHigh += noiseHighSmoothing * (noise - noiseBandHigh);
             noiseBandLow += noiseLowSmoothing * (noise - noiseBandLow);
             const auto noiseTail = (noiseBandHigh - noiseBandLow) * 2.5;
-            const auto washLevel = envelope(age, .25 + metalMix * 8 * (1.0 - clickAmount),
+            auto washLevel = envelope(age, .25 + metalMix * 8 * (1.0 - clickAmount),
                                            decayMs * (1.0 - metalMix * clickAmount * .55)) * strength;
+            if (clusterAmount > 0.0)
+            {
+                // Separated noise strikes merge into a softer tail for clap-like articulation.
+                const auto spacing = .007 + .012 * clickAmount;
+                const auto burst = [&](double start, double duration) {
+                    return age < start ? 0.0 : envelope(age - start, .15, duration);
+                };
+                const auto cluster = .85 * burst(0, 10) + .7 * burst(spacing, 10)
+                                   + burst(spacing * 2, 10) + .55 * burst(spacing * 2, decayMs * .7);
+                washLevel += clusterAmount * (cluster * strength - washLevel);
+            }
             const auto ringing = metalMix > 0 && noiseAmount < 1
                 ? metal.next(noise * envelope(age, .1, 3 + 45 * (1.0 - clickAmount))) : 0.0;
             visual[2] += static_cast<float>(noiseTail * noiseAmount * washLevel
@@ -124,7 +140,7 @@ public:
             previous = sample;
             for (auto& phase : phases) (void) phase.advance();
             age += 1.0 / rate;
-            if (age > decayMs * 0.002 + 0.01) active = false;
+            if (age > decayMs * 0.002 + 0.01 + clusterAmount * .04) active = false;
         }
         return 0.5 * std::tanh(dc.process(downsampler.process(samples)));
     }
@@ -160,6 +176,7 @@ private:
     double feedback = 0.0, feedbackSample = 0.0;
     uint32_t noiseSeed = 0x74617061;
     double noiseLow = 0.0, noiseSmoothing = 0.2;
+    double clusterAmount = 0.0;
     double noiseAmount = 0.0, metalMix = 0.0, noiseBandHigh = 0.0, noiseBandLow = 0.0;
     double noiseHighSmoothing = 0.0, noiseLowSmoothing = 0.0;
     bool active = false;

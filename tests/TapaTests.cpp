@@ -520,6 +520,33 @@ int main()
         }
         check(buzz > total * .1 && crossings > 100);
     }
+    // A clap has distinct early strikes followed by noise, rather than one hat-like wash.
+    {
+        const auto preset = std::find_if(tapa::presets.begin(), tapa::presets.end(),
+            [](const auto& p) { return std::strcmp(p.key, "clap") == 0; });
+        check(preset != tapa::presets.end());
+        for (double rate : {44100.0, 48000.0, 96000.0})
+            for (int note : {36, 60, 84})
+            {
+                tapa::DrumVoice voice; voice.prepare(rate); voice.trigger(preset->values, 1, note);
+                std::array<double, 5> energy {};
+                constexpr std::array starts {0.0, .008, .013, .021, .026};
+                double tail = 0;
+                for (int i = 0; i < rate; ++i)
+                {
+                    const auto sample = voice.next();
+                    check(std::isfinite(sample) && std::abs(sample) <= .5);
+                    const auto time = i / rate;
+                    for (size_t j = 0; j < starts.size(); ++j)
+                        if (time >= starts[j] && time < starts[j] + .003)
+                            energy[j] += sample * sample;
+                    if (time >= .04 && time < .15) tail += sample * sample;
+                }
+                check(energy[0] > energy[1] * 4 && energy[2] > energy[1] * 4);
+                check(energy[2] > energy[3] * 4 && energy[4] > energy[3] * 4);
+                check(tail > energy[4]);
+            }
+    }
     plugin->stop_processing(plugin); plugin->deactivate(plugin); plugin->destroy(plugin);
     std::puts("tapa: DSP bounds/tails, MIDI pitch, CLAP timing, stereo/64-bit, state and presets passed");
 }

@@ -1,7 +1,7 @@
 # tapa
 
 A monophonic drum synth: FM, noise and metallic resonances. Seven controls,
-22 presets. Standalone, CLAP, AUv3 and WCLAP.
+20 presets. Standalone, CLAP, AUv3 and WCLAP.
 
 ![tapa](screenshot.png)
 
@@ -10,7 +10,7 @@ A monophonic drum synth: FM, noise and metallic resonances. Seven controls,
 | Decay | Tail length: 20–4000 ms at MIDI note 60. |
 | FM Ratio | Modulator tuning, metallic pitch and noise colour. |
 | FM Amount | FM depth and metallic spread. |
-| Transient | Attack shape and sharpness. |
+| Transient | Attack shape; clustered claps at mid settings with Noise near 100%. |
 | Saturation | Harmonics and density. |
 | Feedback | FM roughness and metallic ringing. |
 | Noise | FM body → metal and wash → pure filtered noise. |
