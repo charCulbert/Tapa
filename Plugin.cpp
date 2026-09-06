@@ -331,14 +331,12 @@ protected:
     }
     bool guiAdjustSize(uint32_t* width, uint32_t* height) noexcept override
     {
-        if (!width || !height) return false;
-        *width = std::max(420u, *width);
-        *height = std::max(220u, *height);
-        return true;
+        // AUv3 forwards transient host bounds directly; the fluid UI accepts any positive size.
+        return width && height && *width > 0 && *height > 0;
     }
     bool guiSetSize(uint32_t width, uint32_t height) noexcept override
     {
-        if (width < 420 || height < 220) return false;
+        if (width == 0 || height == 0) return false;
         return ui.guiSetSize(width, height);
     }
     bool guiSetParent(const clap_window_t* window) noexcept override
@@ -629,7 +627,7 @@ struct PresetProvider
     {
         static const clap_preset_discovery_provider_descriptor_t value {
             CLAP_VERSION, "com.charlieculbert.tapa.presets",
-            "tapa Presets", "Charlie Culbert"
+            "TAPA Presets", "Charlie Culbert"
         };
         return value;
     }
@@ -695,7 +693,7 @@ const clap_plugin_descriptor_t& descriptor() noexcept
         CLAP_PLUGIN_FEATURE_STEREO, nullptr
     };
     static const clap_plugin_descriptor_t value {
-        CLAP_VERSION, pluginId, "tapa", "Charlie Culbert",
+        CLAP_VERSION, pluginId, "TAPA", "Charlie Culbert",
         "", "", "", "0.1.0", "FM drum with transient and sustained noise", features
     };
     return value;

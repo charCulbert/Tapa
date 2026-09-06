@@ -58,7 +58,7 @@ if(NOT TARGET chardsp)
     add_subdirectory("${CHARDSP_ROOT}" chardsp EXCLUDE_FROM_ALL)
 endif()
 
-set(PLUGIN_OUTPUT_NAME "tapa")
+set(PLUGIN_OUTPUT_NAME "TAPA")
 set(PLUGIN_ID "com.charlieculbert.tapa")
 
 include("${CHAR_CLAP_UTILS_ROOT}/cmake/CharClapWebUI.cmake")

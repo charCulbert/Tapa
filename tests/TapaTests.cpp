@@ -287,13 +287,28 @@ int main()
     check(plugin && plugin->init(plugin));
     const auto* gui = static_cast<const clap_plugin_gui_t*>(plugin->get_extension(plugin, CLAP_EXT_GUI));
     check(gui && gui->create(plugin, CLAP_WINDOW_API_WEBVIEW, false));
+    // AUv3 layout forwards host bounds directly, including small transient sizes.
+    for (const auto size : { std::array<uint32_t, 2>{ 1, 1 }, { 100, 100 },
+                             { 419, 460 }, { 640, 219 }, { 420, 220 }, { 640, 460 } })
+    {
+        check(gui->set_size(plugin, size[0], size[1]));
+        uint32_t w = 0, h = 0;
+        check(gui->get_size(plugin, &w, &h) && w == size[0] && h == size[1]);
+        check(gui->adjust_size(plugin, &w, &h) && w == size[0] && h == size[1]);
+    }
     clap_gui_resize_hints_t hints {};
     check(gui->get_resize_hints(plugin, &hints) && hints.can_resize_horizontally
           && hints.can_resize_vertically && !hints.preserve_aspect_ratio);
     uint32_t width = 1, height = 1;
-    check(gui->adjust_size(plugin, &width, &height) && width == 420 && height == 220);
+    check(gui->adjust_size(plugin, &width, &height) && width == 1 && height == 1);
     check(gui->set_size(plugin, 1280, 800));
     check(gui->get_size(plugin, &width, &height) && width == 1280 && height == 800);
+    check(!gui->set_size(plugin, 0, 800) && !gui->set_size(plugin, 1280, 0));
+    check(gui->get_size(plugin, &width, &height) && width == 1280 && height == 800);
+    width = 0;
+    check(!gui->adjust_size(plugin, &width, &height));
+    check(!gui->adjust_size(plugin, nullptr, &height));
+    check(!gui->adjust_size(plugin, &width, nullptr));
     gui->destroy(plugin);
 
     const auto* params = static_cast<const clap_plugin_params_t*>(plugin->get_extension(plugin, CLAP_EXT_PARAMS));
