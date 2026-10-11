@@ -3,7 +3,7 @@
 #include "Parameters.h"
 #include "ResonatorBank.h"
 #include "chardsp/chardsp_OscillatorPhase.h"
-#include "chardsp/chardsp_SimpleDownsampler.h"
+#include "chardsp/chardsp_Oversampler.h"
 #include "chardsp/chardsp_DCBlocker.h"
 #include <algorithm>
 #include <array>
@@ -16,6 +16,12 @@ namespace tapa
 class DrumVoice
 {
 public:
+    // One channel, one low-rate sample per call: next() renders sample by sample.
+    DrumVoice() { oversampler.prepare(1, 1, chardsp::OversamplingFactor::x4); }
+
+    // Only the downsampling half of the oversampler's round trip applies.
+    uint32_t latency() const noexcept { return oversampler.getLatency() / 2; }
+
     void prepare(double sampleRate) noexcept
     {
         rate = sampleRate * 4.0;
@@ -31,7 +37,7 @@ public:
         active = false;
         visual.fill(0);
         previous = carry = age = feedbackSample = 0.0;
-        downsampler.reset();
+        oversampler.reset();
         dc.reset();
         metal.reset();
         for (auto& phase : phases) phase.reset();
@@ -80,9 +86,15 @@ public:
     double next() noexcept
     {
         visual.fill(0);
-        std::array<double, 4> samples {};
-        for (auto& sample : samples)
+        // The voice is synthesised at the high rate, so the upsampled block is
+        // only storage: every sample is overwritten before it is downsampled.
+        const double silence = 0.0;
+        const double* input = &silence;
+        auto* samples = oversampler.upsample(&input, 1, 1)[0];
+        for (uint32_t i = 0; i < 4; ++i)
         {
+            auto& sample = samples[i];
+            sample = 0.0;
             if (!active) continue;
             const auto pitch = tuning * std::exp2(24.0 * decay(age, 24.0) / 12.0);
             phases[0].setFrequency(pitch);
@@ -142,7 +154,10 @@ public:
             age += 1.0 / rate;
             if (age > decayMs * 0.002 + 0.01 + clusterAmount * .04) active = false;
         }
-        return 0.5 * std::tanh(dc.process(downsampler.process(samples)));
+        double output = 0.0;
+        double* outputs = &output;
+        (void) oversampler.downsample(&outputs, 1, 1);
+        return 0.5 * std::tanh(dc.process(output));
     }
 
 private:
@@ -166,7 +181,7 @@ private:
 
     static constexpr double tau = 6.28318530717958647692;
     std::array<chardsp::OscillatorPhase<double>, 3> phases;
-    chardsp::SimpleDownsampler<double, 4> downsampler;
+    chardsp::Oversampler<double> oversampler;
     chardsp::DCBlocker<double> dc;
     ResonatorBank metal;
     std::array<double, parameters.size()> p {};

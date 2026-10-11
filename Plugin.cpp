@@ -117,6 +117,9 @@ protected:
         return true;
     }
 
+    bool implementsLatency() const noexcept override { return true; }
+    uint32_t latencyGet() const noexcept override { return voice.latency(); }
+
     bool implementsNotePorts() const noexcept override { return true; }
     uint32_t notePortsCount(bool isInput) const noexcept override { return isInput ? 1u : 0u; }
 
