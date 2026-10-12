@@ -1,0 +1,178 @@
+name: Tapa
+
+# Builds, tests and validates Tapa on macOS, Windows and Linux, and as a
+# WCLAP; uploads the plugins only once they pass, and publishes them as a
+# release for a v* tag.
+on:
+  push:
+    branches: [main] # other branches run through their pull request
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+# A newer push cancels the run still going for an older one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PROJECT: .        # the folder with the plugin's CMakeLists.txt
+  TARGET: Tapa          # TARGET_NAME there
+  NAME: "Tapa"            # OUTPUT_NAME there: the plugin files' names
+  AU: "aumu Tapa ChAr"                # AUv2 type, subtype, manufacturer (for auval)
+
+jobs:
+  native:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive # libs/chardsp, and its signalsmith-dsp
+
+      - name: Install Linux packages
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libgtk-3-dev libwebkit2gtk-4.1-dev xvfb xauth
+
+      - name: Build
+        run: |
+          cmake -S "$PROJECT" -B build
+          targets="${TARGET}_clap ${TARGET}_vst3"
+          if [ "$RUNNER_OS" = macOS ]; then targets="$targets ${TARGET}_auv2"; fi
+          cmake --build build --config Release --parallel 4 --target $targets tapa-tests
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Check the licences ship
+        run: |
+          dir=$(find build \( -path "*/$NAME.clap/Contents/Resources" -o -name "$NAME.clap.resources" \) -type d -print -quit)
+          for f in LICENSE THIRD_PARTY_NOTICES.md; do [ ! -f "$PROJECT/$f" ] || test -f "$dir/$f"; done
+          ls "$dir/THIRD_PARTY_LICENSES/"*.txt
+
+      - name: Check out clap-validator
+        uses: actions/checkout@v4
+        with:
+          repository: free-audio/clap-validator
+          ref: 0.4.1
+          path: validator
+
+      - name: Validate CLAP
+        run: |
+          plugin=$(find build -name "$NAME.clap" -print -quit)
+          test -n "$plugin"
+          # clap-validator 0.4.1 deadlocks on any second preset in a container location
+          # (begin_preset holds its result lock while flush_preset takes it again), so its two
+          # preset-discovery tests hang; tests/TapaTests.cpp covers loading the presets.
+          cargo run --release --locked --manifest-path validator/Cargo.toml -- validate "$plugin" --only-failed \
+            -x preset-discovery-crawl -x preset-discovery-load
+
+      # Includes pluginval's editor tests, which open the interface.
+      - name: Validate VST3
+        run: |
+          case "$RUNNER_OS" in
+            macOS) platform=macOS; binary=pluginval-dist/pluginval.app/Contents/MacOS/pluginval ;;
+            Linux) platform=Linux; binary=pluginval-dist/pluginval ;;
+            Windows) platform=Windows; binary=pluginval-dist/pluginval.exe ;;
+          esac
+          curl -sSL -o pluginval.zip "https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_$platform.zip"
+          unzip -q pluginval.zip -d pluginval-dist
+          plugin=$(find build -name "$NAME.vst3" -print -quit) # a folder, or on Windows a single file
+          test -n "$plugin"
+          if [ "$RUNNER_OS" = Linux ]; then run="xvfb-run -a"; fi
+          $run "$binary" --validate "$plugin" --strictness-level 5
+
+      - name: Validate AU
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          cp -R "build/$NAME.component" ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar || true
+          auval -v $AU
+
+      - name: Upload validated plugins
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.TARGET }}-${{ matrix.os }}
+          # Windows and Linux CLAPs are single files, their .clap.resources folder beside them.
+          path: |
+            build/**/${{ env.NAME }}.clap
+            build/**/${{ env.NAME }}.clap.resources
+            build/**/${{ env.NAME }}.vst3
+            build/**/${{ env.NAME }}.component
+          if-no-files-found: error
+
+  wclap:
+    name: WCLAP
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive # libs/chardsp, and its signalsmith-dsp
+
+      - name: Install the WASI SDK
+        run: |
+          curl -sSL https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-33/wasi-sdk-33.0-x86_64-linux.tar.gz | tar xz
+          echo "WASI_SDK=$PWD/wasi-sdk-33.0-x86_64-linux" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: |
+          cmake -S "$PROJECT" -B build-wclap -DCMAKE_TOOLCHAIN_FILE="$WASI_SDK/share/cmake/wasi-sdk-p1.cmake"
+          cmake --build build-wclap --parallel 4
+
+      - name: Check the archive
+        run: |
+          tar tzf "build-wclap/$TARGET.wclap.tar.gz" | tee contents.txt
+          grep -qx 'module.wasm' contents.txt
+          for f in LICENSE THIRD_PARTY_NOTICES.md; do [ ! -f "$PROJECT/$f" ] || grep -qx "$f" contents.txt; done
+          grep -q '^THIRD_PARTY_LICENSES/.*\.txt$' contents.txt
+          grep -qx 'page/index.html' contents.txt
+
+      - name: Upload WCLAP
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.TARGET }}-wclap
+          path: build-wclap/${{ env.TARGET }}.wclap.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [native, wclap]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Package
+        run: |
+          mkdir dist
+          for pair in macos-latest:macOS windows-latest:Windows ubuntu-latest:Linux; do
+            os=${pair%%:*}; label=${pair##*:}
+            out="pack/$NAME"
+            rm -rf pack; mkdir -p "$out"
+            find "artifacts/$TARGET-$os" -maxdepth 4 \( -name "$NAME.clap" -o -name "$NAME.clap.resources" \
+              -o -name "$NAME.vst3" -o -name "$NAME.component" \) -prune -exec cp -R {} "$out/" \;
+            (cd pack && zip -qr "../dist/$NAME-$label.zip" "$NAME")
+          done
+          find artifacts -name "$TARGET.wclap.tar.gz" -type f -exec cp {} dist/ \;
+          test -f "dist/$TARGET.wclap.tar.gz"
+          ls -l dist
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --generate-notes
