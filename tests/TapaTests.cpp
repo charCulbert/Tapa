@@ -1,6 +1,7 @@
-#include "Plugin.h"
+#include "plugin.h"
 #include "DrumVoice.h"
 #include "Presets.h"
+#include "core/messages.h"
 #include <clap/ext/draft/webview.h>
 #include <clap/ext/gui.h>
 #include <algorithm>
@@ -10,6 +11,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <variant>
 #include <vector>
 
 namespace
@@ -281,9 +283,9 @@ int main()
     check(std::abs(crossings[1] - 2 * crossings[0]) <= 1);
     check(std::abs(crossings[0] - 26) <= 1); // MIDI 36 = 65.406 Hz over 0.4 seconds.
 
-    const auto* factory = static_cast<const clap_plugin_factory_t*>(tapa::entryGetFactory(CLAP_PLUGIN_FACTORY_ID));
+    const auto* factory = static_cast<const clap_plugin_factory_t*>(clap_entry.get_factory(CLAP_PLUGIN_FACTORY_ID));
     check(factory && factory->get_plugin_count(factory) == 1);
-    const auto* plugin = factory->create_plugin(factory, &host, tapa::descriptor().id);
+    const auto* plugin = factory->create_plugin(factory, &host, tapa::pluginId);
     check(plugin && plugin->init(plugin));
     const auto* gui = static_cast<const clap_plugin_gui_t*>(plugin->get_extension(plugin, CLAP_EXT_GUI));
     check(gui && gui->create(plugin, CLAP_WINDOW_API_WEBVIEW, false));
@@ -330,6 +332,7 @@ int main()
         return count;
     }};
     check(state->save(plugin, &out));
+    check(saved.size() == 72); // version 6: magic, version and eight doubles
     check(presets->from_location(plugin, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr, "deep"));
     struct Reader { const std::vector<char>& bytes; size_t pos = 0; } reader { saved };
     clap_istream_t in { &reader, [](const clap_istream_t* s, void* data, uint64_t n) -> int64_t {
@@ -418,7 +421,7 @@ int main()
     std::vector<float> demo;
     float maxVisualEnergy = 0, lastVisualEnergy = 0;
     unsigned maxVisualHit = 0;
-    std::string activeVisual;
+    const auto visualRequest = core::encode(core::Value::Map{{"type", "visual"}});
 
     for (const auto* key : { "round", "dry", "deep" })
     {
@@ -434,17 +437,22 @@ int main()
                 check(plugin->process(plugin, &process) != CLAP_PROCESS_ERROR);
                 demo.insert(demo.end(), left.begin(), left.end());
                 visualMessage.clear();
-                check(web->receive(plugin, "visual", 6));
-                unsigned hit = 0;
-                float energy = 0, peak = 0, edge = 0, decayMs = 0, punch = 0, click = 0, drive = 0;
-                if (std::sscanf(visualMessage.c_str(), "visual:%u,%f,%f,%f,%f,%f,%f,%f", &hit, &energy, &peak, &edge, &decayMs, &punch, &click, &drive) == 8)
+                check(web->receive(plugin, visualRequest.data(), static_cast<uint32_t>(visualRequest.size())));
+                if (!visualMessage.empty())
                 {
+                    const auto visual = core::decode(visualMessage.data(), visualMessage.size());
+                    check(visual && (*visual)["type"].text() == "visual");
+                    const auto number = [&](const char* key) { return static_cast<float>((*visual)[key].number(NAN)); };
+                    const auto hit = static_cast<unsigned>((*visual)["hit"].number(0));
+                    const float energy = number("energy"), peak = number("peak"), edge = number("edge");
+                    const float decayMs = number("decayMs"), punch = number("punch"), click = number("click"), drive = number("drive");
                     check(std::isfinite(energy) && energy >= 0 && peak <= 0.5 && edge >= 0);
-                    check(std::count(visualMessage.begin(), visualMessage.end(), ',') == 79);
+                    const auto* operators = std::get_if<core::Value::Array>(&(*visual)["operators"].data);
+                    check(operators && operators->size() == 72);
                     const auto expectedDecay = baseDecay * std::clamp(std::exp2((60.0-note.key)/24), .5, 2.0);
                     check(std::abs(decayMs - expectedDecay) < .001);
                     check(punch >= 0 && punch <= 1 && click >= 0 && click <= 1 && drive >= 0 && drive <= 1);
-                    if (energy > maxVisualEnergy) { maxVisualEnergy = energy; activeVisual = visualMessage; }
+                    maxVisualEnergy = std::max(maxVisualEnergy, energy);
                     lastVisualEnergy = energy;
                     maxVisualHit = std::max(maxVisualHit, hit);
                 }
@@ -453,7 +461,6 @@ int main()
         }
     }
     check(maxVisualEnergy > 0.05f && lastVisualEnergy < 0.005f && maxVisualHit >= 12);
-    std::ofstream("tapa-visual.txt") << activeVisual;
     writeWav(demo);
     std::vector<float> presetDemo;
     for (const auto& preset : tapa::presets)

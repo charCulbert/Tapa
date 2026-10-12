@@ -4,7 +4,7 @@ const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const {chromium} = require('playwright');
-const root = path.resolve(__dirname, '../build-native/tapa-resources');
+const root = path.resolve(__dirname, '../build/resources');
 (async () => {
   const server = http.createServer(async (request, response) => {
     try {
@@ -22,7 +22,7 @@ const root = path.resolve(__dirname, '../build-native/tapa-resources');
       const page = await browser.newPage({deviceScaleFactor});
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
-      await page.goto(`http://127.0.0.1:${server.address().port}/ui/index.html`);
+      await page.goto(`http://127.0.0.1:${server.address().port}/page/index.html`);
       const mode = page.getByRole('button', {name:'Link FM decay to body'});
       await mode.click();
       assert.equal(await mode.getAttribute('aria-pressed'), 'true');
@@ -30,7 +30,10 @@ const root = path.resolve(__dirname, '../build-native/tapa-resources');
       await mode.press('Space');
       assert.equal(await mode.getAttribute('aria-pressed'), 'false');
       assert.equal(await mode.textContent(), 'body');
-      await page.evaluate(() => window.postMessage(new TextEncoder().encode('values:7=1;').buffer, '*'));
+      await page.evaluate(async () => {
+        const {encode} = await import('./lib/messages.js');
+        window.postMessage(encode({type: 'values', values: {7: 1}}), '*');
+      });
       await page.waitForFunction(() => document.querySelector('.decay-mode').getAttribute('aria-pressed') === 'true');
       assert.equal(await mode.textContent(), 'linked');
       for (const [width, height] of [[640,460], [420,220], [1280,800], [320,180], [1920,1080], [640,460]]) {

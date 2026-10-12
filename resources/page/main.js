@@ -1,8 +1,13 @@
+// Tapa's page: seven sliders, the Body/Linked switch and the texture behind
+// them. It only knows the messages plugin.cpp documents:
+//   from the plugin  {type: "values", values: {id: value}},
+//                    {type: "visual", hit, energy, peak, edge, decayMs, punch, click, drive, operators}
+//   to the plugin    {type: "ready"}, {type: "begin" | "end", id}, {type: "change", id, value},
+//                    {type: "visual"}: polled every 33 ms,
+//                    {type: "resize", width, height, scale}: the page's new size in CSS pixels
+import {sendMessage, onMessage} from './lib/messages.js';
 import './compost/components/compost-slider.js';
 
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
-const send = text => window.parent.postMessage(encoder.encode(text).buffer, '*');
 const controls = Object.fromEntries([...document.querySelectorAll('compost-slider')].map(control => [control.getAttribute('parameter-id'), control]));
 const frame = document.querySelector('main');
 const decayMode = document.querySelector('.decay-mode');
@@ -13,49 +18,64 @@ function showDecayMode(linked) {
 decayMode.addEventListener('click', () => {
   const linked = decayMode.getAttribute('aria-pressed') !== 'true';
   showDecayMode(linked);
-  send('begin:7'); send(`value:7:${linked ? 1 : 0}`); send('end:7');
+  sendMessage({type: 'begin', id: 7});
+  sendMessage({type: 'change', id: 7, value: linked ? 1 : 0});
+  sendMessage({type: 'end', id: 7});
 });
 let lastHit = 0, flashStarted = -Infinity, flashDuration = 280;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
 addEventListener('parameter-begin', ({detail}) => {
   controls[detail.parameterID]?.setAttribute('data-editing','');
-  send(`begin:${detail.parameterID}`);
+  sendMessage({type: 'begin', id: Number(detail.parameterID)});
 });
-addEventListener('parameter-edit', ({detail}) => send(`value:${detail.parameterID}:${detail.value}`));
+addEventListener('parameter-edit', ({detail}) =>
+  sendMessage({type: 'change', id: Number(detail.parameterID), value: detail.value}));
 addEventListener('parameter-end', ({detail}) => {
-  if (detail.cancelled) send(`value:${detail.parameterID}:${detail.value}`);
-  send(`end:${detail.parameterID}`);
+  // Escape cancels a drag: compost reports the start value only here, so resend it.
+  if (detail.cancelled) sendMessage({type: 'change', id: Number(detail.parameterID), value: detail.value});
+  sendMessage({type: 'end', id: Number(detail.parameterID)});
   controls[detail.parameterID]?.removeAttribute('data-editing');
 });
-addEventListener('message', ({data}) => {
-  if (!(data instanceof ArrayBuffer) && !ArrayBuffer.isView(data)) return;
-  const text = decoder.decode(data);
-  if (text.startsWith('visual:')) {
-    const values = text.slice(7).split(',').map(Number);
-    if (values.length !== 80 || !values.every(Number.isFinite)) return;
-    if (values[0] !== 0 && lastHit !== values[0]) {
+onMessage(message => {
+  if (message.type === 'visual') {
+    const {hit, decayMs, operators} = message;
+    if (!Number.isFinite(hit) || !Number.isFinite(decayMs) || operators?.length !== 72
+        || !operators.every(Number.isFinite)) return;
+    if (hit !== 0 && lastHit !== hit) {
       flashStarted = performance.now();
-      flashDuration = Math.max(1, values[4]);
+      flashDuration = Math.max(1, decayMs);
       frame.style.setProperty('--border-alpha', reducedMotion.matches ? '0' : '.30');
     }
-    lastHit = values[0];
+    lastHit = hit;
     visualUpdated = performance.now();
-    operatorFrames = values.slice(8);
+    operatorFrames = operators;
   }
-  if (!text.startsWith('values:')) return;
-  for (const pair of text.slice(7).split(';')) {
-    const [id,value] = pair.split('=');
-    if (id === '7' && Number.isFinite(Number(value))) showDecayMode(Number(value) >= .5);
-    if (id && controls[id] && Number.isFinite(Number(value))) controls[id].value = Number(value);
+  if (message.type !== 'values') return;
+  for (const [id, value] of Object.entries(message.values)) {
+    if (!Number.isFinite(value)) continue;
+    if (id === '7') showDecayMode(value >= .5);
+    if (controls[id]) controls[id].value = value;
   }
 });
 setInterval(() => {
-  if (!document.hidden) send('visual');
+  if (!document.hidden) sendMessage({type: 'visual'});
   const remaining = Math.max(0, 1 - (performance.now() - flashStarted) / flashDuration);
   frame.style.setProperty('--border-alpha', reducedMotion.matches ? '0' : String(.30 * remaining * remaining));
 },33);
-send('ready');
+
+// The corner grip asks the plugin for a new window size while it is dragged.
+const grip = document.getElementById('resize');
+grip.addEventListener('pointerdown', event => {
+  grip.setPointerCapture(event.pointerId);
+  const offsetX = innerWidth - event.clientX, offsetY = innerHeight - event.clientY;
+  const move = e => sendMessage({type: 'resize', width: e.clientX + offsetX, height: e.clientY + offsetY,
+                                 scale: devicePixelRatio});
+  grip.addEventListener('pointermove', move);
+  grip.addEventListener('pointerup', () => grip.removeEventListener('pointermove', move), {once: true});
+});
+
+sendMessage({type: 'ready'});
 
 // Hand pointer capture to the next Compost slider when a drag crosses columns.
 const sliderPanel = document.querySelector('.sliders');

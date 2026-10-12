@@ -25,6 +25,11 @@ compost-slider:focus-visible::part(label) { color: #ddd; font-weight: 600; }
 .decay-mode[aria-pressed="true"] { opacity: 1; }
 .decay-mode:focus-visible { outline: 1px solid #777; outline-offset: -2px; }
 main:has(compost-slider[parameter-id="1"][data-editing]) .decay-mode { visibility: hidden; }
+/* A resize grip in the corner, for hosts that don't resize plugin windows
+   themselves (AU hosts); dragging it sends "resize" (see main.js). */
+#resize { position: fixed; right: 0; bottom: 0; z-index: 11; width: 14px; height: 14px; cursor: nwse-resize;
+          background: linear-gradient(135deg, transparent 50%, #ffffff40 50%, #ffffff40 58%, transparent 58%,
+                                      transparent 70%, #ffffff40 70%, #ffffff40 78%, transparent 78%); }
 </style></head><body><main>
 <canvas class="kick-art" aria-hidden="true"></canvas>
 <div class="sliders">
@@ -35,4 +40,4 @@ main:has(compost-slider[parameter-id="1"][data-editing]) .decay-mode { visibilit
 <compost-slider orientation="vertical" interaction="absolute" parameter-id="4" label="Saturation" min="0" max="12" value="2" reset-value="2" step="0.1" unit=" dB"></compost-slider>
 <compost-slider orientation="vertical" interaction="absolute" parameter-id="5" label="Feedback" min="0" max="100" value="0" reset-value="0" step="0.1" unit=" %"></compost-slider>
 <compost-slider orientation="vertical" interaction="absolute" parameter-id="8" label="Noise" min="0" max="100" value="0" reset-value="0" step="0.1" unit=" %"></compost-slider>
-</div><button class="decay-mode" type="button" aria-label="Link FM decay to body" aria-pressed="false" title="Click to switch. Body: short FM attack. Linked: FM follows the body decay.">body</button></main><script type="module" src="main.js"></script></body></html>
+</div><button class="decay-mode" type="button" aria-label="Link FM decay to body" aria-pressed="false" title="Click to switch. Body: short FM attack. Linked: FM follows the body decay.">body</button></main><div id="resize" title="Resize"></div><script type="module" src="main.js"></script></body></html>
