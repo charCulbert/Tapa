@@ -26,11 +26,17 @@ resize the window.
 
 ## Build
 
-Requires CMake 3.28+ and a C++20 compiler (on Linux also `libasound2-dev`,
-`libgtk-3-dev` and `libwebkit2gtk-4.1-dev`). CMake downloads the
+Requires CMake 3.28+ and a C++20 compiler (on Linux also `libasound2-dev`
+and `libx11-dev`). CMake downloads the
 [char-clap-template](https://github.com/charCulbert/char-clap-template)
 libraries Tapa is built on, at the release in `CMakeLists.txt`. chardsp is a
 submodule in `libs/chardsp`.
+
+A web page interface needs no GTK or WebKit to build. To show the page, the
+machine running the plugin needs WebKitGTK (`libwebkit2gtk-4.1-0` on Debian
+and Ubuntu) and glibc: the page runs in a helper process, started through
+glibc's dynamic loader. Without WebKitGTK the plugin still loads, with no
+interface.
 
 ```sh
 git clone --recurse-submodules https://github.com/charCulbert/Tapa.git
